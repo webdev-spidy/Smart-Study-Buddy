@@ -1,5 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Plus, Send, RefreshCw, Loader2, CheckCircle, X } from 'lucide-react';
+import Lottie from 'lottie-react';
+import bookLoaderAnimation from '../assets/animations/bookLoader.json';
 
 interface Message {
   id: string;
@@ -26,15 +28,40 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: ChatInterfaceProps) {
   const [query, setQuery] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessingQuery, setIsProcessingQuery] = useState(false);
   const [uploadStatuses, setUploadStatuses] = useState<UploadStatus[]>([]);
   const [uploadingFile, setUploadingFile] = useState<string | null>(null);
+  const [processingMessage, setProcessingMessage] = useState('🔍 Thinking deeply about your question...');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ⏱️ Dynamic message updater while query is processing
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isProcessingQuery) {
+      setProcessingMessage('🔍 Thinking deeply about your question...');
+
+      timer = setTimeout(() => setProcessingMessage('📚 Skimming through your study materials...'), 30 * 1000); // 30 sec
+      const timer2 = setTimeout(() => setProcessingMessage('⏳ Sorry for the wait — almost there!'), 90 * 1000); // 1 min more
+      const timer3 = setTimeout(() => setProcessingMessage('🤖 Even I’m trying my best... hang tight, I’ll be ready soon!'), 210 * 1000); // after 2 more mins
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+      };
+    }
+  }, [isProcessingQuery]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim() && !isUploading) {
-      await onSubmitQuery(query);
-      setQuery('');
+    if (query.trim() && !isUploading && !isProcessingQuery) {
+      setIsProcessingQuery(true);
+      try {
+        await onSubmitQuery(query);
+        setQuery('');
+      } finally {
+        setIsProcessingQuery(false);
+      }
     }
   };
 
@@ -52,7 +79,6 @@ export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: 
 
     try {
       const result = await onUploadPDF(file);
-      
       const newStatus: UploadStatus = {
         id: Date.now().toString(),
         filename: file.name,
@@ -86,13 +112,9 @@ export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: 
   };
 
   const formatResponse = (response: string) => {
-    // Split by double newlines for paragraphs
     const paragraphs = response.split('\n\n');
-    
     return paragraphs.map((paragraph, idx) => {
       if (!paragraph.trim()) return null;
-
-      // Check if it's a numbered list item (e.g., "1. Title: description")
       const numberedMatch = paragraph.match(/^(\d+)\.\s*\*\*(.+?)\*\*:?\s*(.+)$/s);
       if (numberedMatch) {
         const [, num, title, description] = numberedMatch;
@@ -106,7 +128,6 @@ export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: 
         );
       }
 
-      // Check for bold patterns **text**
       const parts = paragraph.split(/(\*\*.*?\*\*)/g);
       const formattedText = parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
@@ -208,6 +229,31 @@ export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: 
                 </div>
               </div>
             ))}
+
+            {/* Loading Animation */}
+            {isProcessingQuery && (
+              <div className="space-y-3">
+                {/* User Query Placeholder */}
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 bg-[#4A4A4A] rounded-2xl px-5 py-3">
+                    <p className="text-white text-[15px]">{query}</p>
+                  </div>
+                </div>
+
+                {/* Animated Book + Dynamic Message */}
+                <div className="bg-[#3A3A3A] rounded-2xl px-6 py-12 flex flex-col items-center justify-center">
+                  <Lottie 
+                    animationData={bookLoaderAnimation}
+                    loop={true}
+                    autoplay={true}
+                    style={{ width: 200, height: 200 }}
+                  />
+                  <p className="text-white/70 text-sm text-center mt-4 transition-all duration-700">
+                    {processingMessage}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -245,21 +291,21 @@ export default function ChatInterface({ messages, onSubmitQuery, onUploadPDF }: 
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Type your query here"
-              disabled={isUploading}
-              className={`flex-1 bg-transparent text-white placeholder-gray-400 px-20 py-4 focus:outline-none ${
-                isUploading ? 'opacity-50 cursor-not-allowed' : ''
+              disabled={isUploading || isProcessingQuery}
+              className={`flex-1 bg-transparent text-white placeholder-gray-400 px-16 py-4 focus:outline-none ${
+                isUploading || isProcessingQuery ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             />
             <button
               type="submit"
-              disabled={!query.trim() || isUploading}
+              disabled={!query.trim() || isUploading || isProcessingQuery}
               className={`absolute right-4 p-2 rounded transition-colors ${
-                !query.trim() || isUploading
+                !query.trim() || isUploading || isProcessingQuery
                   ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   : 'bg-[#9A7272] text-white hover:bg-[#8A6262]'
               }`}
             >
-              {isUploading ? (
+              {isUploading || isProcessingQuery ? (
                 <Loader2 size={18} className="animate-spin" />
               ) : (
                 <Send size={18} />
